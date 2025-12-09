@@ -1,20 +1,25 @@
-// api/user.js - 独立接口函数，使用Edge运行时消除冷启动
-export const runtime = 'edge';
-
-export default function handler(req) {
-  // Edge Functions用Response对象返回，而非res.json
-  return new Response(
-    JSON.stringify({
+// api/user.js - 用户信息接口
+export default function handler(req, res) {
+  // 设置CORS头
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+  
+  if (req.method === 'GET') {
+    res.status(200).json({
       id: 1,
       name: '张三',
       email: 'zhangsan@example.com',
       age: 25,
       city: '北京',
       timestamp: new Date().toISOString()
-    }),
-    {
-      headers: { 'Content-Type': 'application/json' },
-      status: 200
-    }
-  );
+    });
+  } else {
+    res.status(405).json({ error: 'Method not allowed' });
+  }
 }
