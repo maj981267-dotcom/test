@@ -1,15 +1,18 @@
 const express = require('express');
+const path = require('path'); // 【新增 1】引入 path 模块
 const app = express();
 
-// 静态文件服务
-app.use(express.static('public'));
+// 【修改 1】使用绝对路径配置静态文件服务
+// 这样能确保在 Vercel 环境下也能正确找到 public 文件夹
+app.use(express.static(path.join(__dirname, 'public')));
 
-// 根路径简单返回文本
+// 【修改 2】根路径直接返回 index.html 文件
+// 这样用户打开域名就能直接看到界面，不用手动加 /index.html
 app.get('/', (req, res) => {
-  res.send('欢迎访问 Node.js Express 测试应用！请访问 /index.html 查看完整页面。');
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// API路由 - 用户信息接口
+// API路由 - 用户信息接口 (保持不变)
 app.get('/api/user', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -25,7 +28,7 @@ app.get('/api/user', (req, res) => {
   });
 });
 
-// API路由 - 产品列表接口
+// API路由 - 产品列表接口 (保持不变)
 app.get('/api/products', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
