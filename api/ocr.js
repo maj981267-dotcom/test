@@ -1,5 +1,56 @@
-// api/ocr.js - 百度OCR接口 (二次封装)
+// api/ocr.js - 百度OCR接口 (二次封装) - 支持 multipart/form-data
 import axios from 'axios';
+
+// Multipart 解析函数
+function parseMultipartData(req) {
+  return new Promise((resolve, reject) => {
+    const boundary = req.headers['content-type']?.split('boundary=')[1];
+    if (!boundary) {
+      reject(new Error('No boundary found in content-type'));
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString('binary');
+    });
+
+    req.on('end', () => {
+      try {
+        const parts = body.split(`--${boundary}`);
+        const result = {};
+
+        for (const part of parts) {
+          if (part.includes('Content-Disposition')) {
+            const nameMatch = part.match(/name="([^"]+)"/);
+            if (!nameMatch) continue;
+
+            const fieldName = nameMatch[1];
+            const contentStart = part.indexOf('\r\n\r\n') + 4;
+            const contentEnd = part.lastIndexOf('\r\n');
+            
+            if (contentStart < contentEnd) {
+              if (fieldName === 'image') {
+                // 处理文件数据
+                const binaryData = part.substring(contentStart, contentEnd);
+                result[fieldName] = Buffer.from(binaryData, 'binary');
+              } else {
+                // 处理文本字段
+                result[fieldName] = part.substring(contentStart, contentEnd);
+              }
+            }
+          }
+        }
+
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    req.on('error', reject);
+  });
+}
 
 // 文本过滤函数
 function filterEnglishWords(wordsResult) {
@@ -63,17 +114,53 @@ export default async function handler(req, res) {
   }
   
   try {
-    const { token, image } = req.body;
+    let token, imageBuffer;
     
-    // 验证必需参数
-    if (!token || !image) {
-      return res.status(400).json({
-        error: 'Missing required parameters: token and image'
-      });
+    // 检查请求类型：multipart/form-data 或 JSON
+    const contentType = req.headers['content-type'] || '';
+    
+    if (contentType.includes('multipart/form-data')) {
+      // 处理 multipart/form-data 请求
+      const formData = await parseMultipartData(req);
+      token = formData.token;
+      imageBuffer = formData.image;
+      
+      if (!token || !imageBuffer) {
+        return res.status(400).json({
+          error: 'Missing required parameters: token and image file'
+        });
+      }
+      
+      // 验证文件类型
+      if (!imageBuffer || imageBuffer.length === 0) {
+        return res.status(400).json({
+          error: 'Invalid or empty image file'
+        });
+      }
+      
+    } else {
+      // 处理传统的 JSON 请求（向后兼容）
+      const { token: jsonToken, image } = req.body;
+      token = jsonToken;
+      
+      if (!token || !image) {
+        return res.status(400).json({
+          error: 'Missing required parameters: token and image'
+        });
+      }
+      
+      // 对于 JSON 请求，image 应该已经是 base64 格式
+      const base64Data = image.replace(/^data:image\/[a-z]+;base64,/, '');
+      imageBuffer = base64Data;
     }
     
-    // 提取base64数据 (移除data:image/jpeg;base64,前缀)
-    const base64Data = image.replace(/^data:image\/[a-z]+;base64,/, '');
+    // 将图片转换为 base64（如果还不是的话）
+    let base64Data;
+    if (Buffer.isBuffer(imageBuffer)) {
+      base64Data = imageBuffer.toString('base64');
+    } else {
+      base64Data = imageBuffer;
+    }
     
     // 调用百度OCR API
     const baiduResponse = await axios.post(
